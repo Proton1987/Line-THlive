@@ -1,22 +1,36 @@
 const express = require("express");
 const app = express();
+
+// ---- CORS — อนุญาต Chrome extension และ th-live.online ----
+app.use((req, res, next) => {
+  const origin = req.headers.origin || "";
+  const allowed = ["https://th-live.online"];
+  if (!origin || origin.startsWith("chrome-extension://") || allowed.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-TLAC-Secret");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
 
 // ============================================================
-//  CONFIG — ใช้ env ที่มีอยู่แล้วบน Render ได้เลย
-//  CHANNEL_ACCESS_TOKEN  : มีอยู่แล้ว ✅
-//  ADMIN_LINE_ID         : มีอยู่แล้ว ✅
-//  EXTENSION_SECRET      : เพิ่มใหม่ 1 ตัว — ตั้งค่าอะไรก็ได้ เช่น "tlac_secret_2025"
+//  CONFIG — ตั้งค่าใน Render → Environment Variables
+//  LINE_CHANNEL_ACCESS_TOKEN  : จาก LINE Developers Console
+//  LINE_USER_ID               : userId ของคุณ รูปแบบ Uxxxxxxxxxx
+//  EXTENSION_SECRET           : รหัสลับ ตั้งเองได้เลย
 // ============================================================
-const LINE_TOKEN = process.env.CHANNEL_ACCESS_TOKEN;
-const LINE_USER_ID = process.env.ADMIN_LINE_ID;
-const SECRET = process.env.EXTENSION_SECRET;
-const PORT = process.env.PORT || 3000;
+const LINE_TOKEN   = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const LINE_USER_ID = process.env.LINE_USER_ID;
+const SECRET       = process.env.EXTENSION_SECRET;
+const PORT         = process.env.PORT || 3000;
 
 // ---- LINE push message ----
 async function pushLine(messages) {
   if (!LINE_TOKEN || !LINE_USER_ID) {
-    console.warn("LINE_TOKEN or LINE_USER_ID not set");
+    console.warn("[TLAC] LINE_TOKEN or LINE_USER_ID not set");
     return;
   }
   const body = {
@@ -34,160 +48,100 @@ async function pushLine(messages) {
     });
     if (!res.ok) {
       const err = await res.text();
-      console.error("LINE push error:", res.status, err);
+      console.error("[TLAC] LINE push error:", res.status, err);
+    } else {
+      console.log("[TLAC] LINE push ok");
     }
   } catch (e) {
-    console.error("LINE push fetch error:", e);
+    console.error("[TLAC] LINE push fetch error:", e.message);
   }
 }
 
 // ---- Message builders ----
 function buildMessage(event) {
   const roomName = event.roomName || event.roomId || "บอท";
-  const vjName = event.vjName ? ` (${event.vjName})` : "";
-  const ts = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+  const vjName   = event.vjName ? ` (${event.vjName})` : "";
+  const ts       = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
 
   switch (event.type) {
     case "bot_started":
-      return {
-        type: "flex",
-        altText: `▶ ${roomName} เริ่มทำงานแล้ว`,
-        contents: flexBubble({
-          headerColor: "#34c77b",
-          icon: "▶",
-          title: "บอทเริ่มทำงาน",
-          body: [
-            row("ห้อง", roomName + vjName),
-            row("เวลา", ts),
-          ],
-        }),
-      };
+      return flexMsg("▶ บอทเริ่มทำงาน", "#34c77b", [
+        row("ห้อง", roomName + vjName),
+        row("เวลา", ts),
+      ]);
 
     case "bot_stopped":
-      return {
-        type: "flex",
-        altText: `⏹ ${roomName} หยุดแล้ว`,
-        contents: flexBubble({
-          headerColor: "#5b8ef0",
-          icon: "⏹",
-          title: "บอทหยุดแล้ว",
-          body: [
-            row("ห้อง", roomName + vjName),
-            row("เวลา", ts),
-          ],
-        }),
-      };
+      return flexMsg("⏹ บอทหยุดแล้ว", "#5b8ef0", [
+        row("ห้อง", roomName + vjName),
+        row("เวลา", ts),
+      ]);
 
     case "auto_stopped": {
       const reasonMap = {
-        no_room: "ห้องปิดแล้ว",
-        session_expired: "Session หมด — กรุณา login ใหม่",
-        crypto_unavailable: "โหลด crypto ไม่สำเร็จ",
+        no_room:             "ห้องปิดแล้ว",
+        session_expired:     "Session หมด — กรุณา login ใหม่",
+        crypto_unavailable:  "โหลด crypto ไม่สำเร็จ",
       };
       const reason = reasonMap[event.reason] || event.reason || "ไม่ทราบสาเหตุ";
-      return {
-        type: "flex",
-        altText: `🛑 ${roomName} หยุดอัตโนมัติ — ${reason}`,
-        contents: flexBubble({
-          headerColor: "#e8445a",
-          icon: "🛑",
-          title: "บอทหยุดอัตโนมัติ",
-          body: [
-            row("ห้อง", roomName + vjName),
-            row("สาเหตุ", reason),
-            row("เวลา", ts),
-          ],
-        }),
-      };
+      return flexMsg("🛑 บอทหยุดอัตโนมัติ", "#e8445a", [
+        row("ห้อง", roomName + vjName),
+        row("สาเหตุ", reason),
+        row("เวลา", ts),
+      ]);
     }
 
     case "session_expired":
-      return {
-        type: "flex",
-        altText: `⚠️ Session หมด — กรุณา login ใหม่`,
-        contents: flexBubble({
-          headerColor: "#f0a832",
-          icon: "⚠️",
-          title: "Session หมด",
-          body: [
-            row("ห้อง", roomName + vjName),
-            row("", "กรุณาเปิด TH Live แล้ว login ใหม่"),
-            row("เวลา", ts),
-          ],
-        }),
-      };
+      return flexMsg("⚠️ Session หมด", "#f0a832", [
+        row("ห้อง", roomName + vjName),
+        row("", "กรุณาเปิด TH Live แล้ว login ใหม่"),
+        row("เวลา", ts),
+      ]);
 
-    case "stats_update": {
-      const sent = event.sent ?? 0;
-      const failed = event.failed ?? 0;
-      return {
-        type: "flex",
-        altText: `📊 ${roomName} — ✅ ${sent}  ❌ ${failed}`,
-        contents: flexBubble({
-          headerColor: "#5b8ef0",
-          icon: "📊",
-          title: "สถิติบอท",
-          body: [
-            row("ห้อง", roomName + vjName),
-            row("ส่งสำเร็จ", `✅ ${sent} ครั้ง`),
-            row("ล้มเหลว", `❌ ${failed} ครั้ง`),
-            row("เวลา", ts),
-          ],
-        }),
-      };
-    }
+    case "stats_update":
+      return flexMsg("📊 สถิติบอท", "#5b8ef0", [
+        row("ห้อง", roomName + vjName),
+        row("ส่งสำเร็จ", "✅ " + (event.sent ?? 0) + " ครั้ง"),
+        row("ล้มเหลว",   "❌ " + (event.failed ?? 0) + " ครั้ง"),
+        row("เวลา", ts),
+      ]);
 
     default:
       return { type: "text", text: `[TLAC] ${event.type} — ${roomName}` };
   }
 }
 
-// ---- Flex Bubble helpers ----
-function flexBubble({ headerColor, icon, title, body }) {
+function flexMsg(title, color, rows) {
   return {
-    type: "bubble",
-    size: "kilo",
-    header: {
-      type: "box",
-      layout: "horizontal",
-      backgroundColor: headerColor,
-      paddingAll: "12px",
-      contents: [
-        {
-          type: "text",
-          text: `${icon}  ${title}`,
-          color: "#ffffff",
-          weight: "bold",
-          size: "sm",
-          flex: 1,
-        },
-      ],
-    },
-    body: {
-      type: "box",
-      layout: "vertical",
-      paddingAll: "12px",
-      spacing: "sm",
-      contents: body,
+    type: "flex",
+    altText: title,
+    contents: {
+      type: "bubble",
+      size: "kilo",
+      header: {
+        type: "box",
+        layout: "horizontal",
+        backgroundColor: color,
+        paddingAll: "12px",
+        contents: [{ type: "text", text: title, color: "#ffffff", weight: "bold", size: "sm" }],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "12px",
+        spacing: "sm",
+        contents: rows,
+      },
     },
   };
 }
 
 function row(label, value) {
-  if (!label) {
-    return {
-      type: "text",
-      text: value,
-      size: "xs",
-      color: "#888888",
-      wrap: true,
-    };
-  }
+  if (!label) return { type: "text", text: String(value), size: "xs", color: "#888888", wrap: true };
   return {
     type: "box",
     layout: "horizontal",
     contents: [
-      { type: "text", text: label, size: "xs", color: "#888888", flex: 2 },
+      { type: "text", text: label,        size: "xs", color: "#888888", flex: 2 },
       { type: "text", text: String(value), size: "xs", color: "#333333", flex: 5, wrap: true, align: "end" },
     ],
   };
@@ -197,9 +151,9 @@ function row(label, value) {
 //  POST /notify  — extension ส่ง event มาที่นี่
 // ============================================================
 app.post("/notify", async (req, res) => {
-  // ตรวจ secret
   const auth = req.headers["x-tlac-secret"];
   if (!auth || auth !== SECRET) {
+    console.warn("[TLAC] unauthorized — secret mismatch. got:", auth);
     return res.status(401).json({ error: "unauthorized" });
   }
 
@@ -215,19 +169,24 @@ app.post("/notify", async (req, res) => {
     await pushLine(msg);
     res.json({ ok: true });
   } catch (e) {
-    console.error(e);
+    console.error("[TLAC] error:", e.message);
     res.status(500).json({ error: "internal" });
   }
 });
 
-// ---- LINE Webhook endpoint ----
-// LINE Platform จะ POST มาที่นี่เพื่อ verify และรับ events
-// ตอนนี้ยังไม่ได้ใช้ events จาก LINE (Flow B) — แค่ตอบ 200 ไว้ก่อน
-app.post("/webhook", (req, res) => {
-  res.status(200).json({ status: "ok" });
-});
+// ---- LINE Webhook (รองรับ verify จาก LINE Console) ----
+app.post("/webhook", (req, res) => res.status(200).json({ status: "ok" }));
 
 // ---- Health check ----
-app.get("/", (req, res) => res.json({ status: "TLAC server running" }));
+app.get("/", (req, res) => {
+  res.json({
+    status: "TLAC server running",
+    env: {
+      LINE_TOKEN:   !!LINE_TOKEN,
+      LINE_USER_ID: !!LINE_USER_ID,
+      SECRET:       !!SECRET,
+    },
+  });
+});
 
 app.listen(PORT, () => console.log(`TLAC server listening on port ${PORT}`));
