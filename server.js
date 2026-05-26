@@ -135,46 +135,29 @@ function buildMessage(event) {
 
         chunk.forEach((v, index) => {
           const roomIndex = i + index + 1;
-          // จัดหน้าตาสวยๆ แบบที่คุณชอบ เป็น row ซ้าย-ขวา
           rows.push(
             row(`${roomIndex}. ${v.vjName}`, `${v.roomType} (ID: ${v.liveId})`),
           );
         });
 
-        // ดึงโครงสร้าง JSON ไปสร้างการ์ดแต่ละใบ
-        bubbles.push({
-          type: "bubble",
-          size: "medium",
-          header: {
-            type: "box",
-            layout: "vertical",
-            backgroundColor: "#5b8ef0", // สีฟ้าแบบเดียวกับกล่องสถิติ
-            contents: [
-              {
-                type: "text",
-                text: "🔍 รายชื่อห้อง VJ",
-                weight: "bold",
-                color: "#ffffff",
-                size: "md",
-              },
-            ],
-          },
-          body: {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: rows,
-          },
-        });
+        // เปลี่ยนมาใช้ flexMsg สร้าง bubble แต่ละใบให้ชัวร์ว่าโครงสร้างเหมือนตัวสถิติ
+        const singleBubble = flexMsg("🔍 รายชื่อห้อง VJ", "#5b8ef0", rows);
+
+        // ดึงเอาเฉพาะส่วน contents ภายใน bubble มาใส่ใน Carousel
+        if (singleBubble && singleBubble.contents) {
+          bubbles.push(singleBubble.contents);
+        } else {
+          bubbles.push(singleBubble);
+        }
       }
 
-      // ส่งกลับไปที่ LINE เป็นแบบ Carousel สไลด์ข้างได้ละลานตา
+      // ส่งกลับแบบ Carousel
       return {
         type: "flex",
         altText: `🔍 พบข้อมูลทั้งหมด ${event.count} ห้อง`,
         contents: {
           type: "carousel",
-          bubbles: bubbles.slice(0, 10), // โชว์สูงสุด 10 การ์ด (60 ห้อง) ป้องกัน LINE บล็อก
+          bubbles: bubbles.slice(0, 10),
         },
       };
     }
