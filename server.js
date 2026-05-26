@@ -3,13 +3,13 @@ const app = express();
 app.use(express.json());
 
 // ============================================================
-//  CONFIG — ใส่ค่าเหล่านี้ใน Render → Environment Variables
-//  LINE_CHANNEL_ACCESS_TOKEN  : จาก LINE Developers Console
-//  LINE_USER_ID               : userId ของคุณ (ดูได้จาก LINE OA Manager)
-//  EXTENSION_SECRET           : รหัสลับอะไรก็ได้ ตั้งเองเลย เช่น "tlac_secret_2025"
+//  CONFIG — ใช้ env ที่มีอยู่แล้วบน Render ได้เลย
+//  CHANNEL_ACCESS_TOKEN  : มีอยู่แล้ว ✅
+//  ADMIN_LINE_ID         : มีอยู่แล้ว ✅
+//  EXTENSION_SECRET      : เพิ่มใหม่ 1 ตัว — ตั้งค่าอะไรก็ได้ เช่น "tlac_secret_2025"
 // ============================================================
-const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const LINE_USER_ID = process.env.LINE_USER_ID;
+const LINE_TOKEN = process.env.CHANNEL_ACCESS_TOKEN;
+const LINE_USER_ID = process.env.ADMIN_LINE_ID;
 const SECRET = process.env.EXTENSION_SECRET;
 const PORT = process.env.PORT || 3000;
 
@@ -218,6 +218,13 @@ app.post("/notify", async (req, res) => {
     console.error(e);
     res.status(500).json({ error: "internal" });
   }
+});
+
+// ---- LINE Webhook endpoint ----
+// LINE Platform จะ POST มาที่นี่เพื่อ verify และรับ events
+// ตอนนี้ยังไม่ได้ใช้ events จาก LINE (Flow B) — แค่ตอบ 200 ไว้ก่อน
+app.post("/webhook", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 
 // ---- Health check ----
